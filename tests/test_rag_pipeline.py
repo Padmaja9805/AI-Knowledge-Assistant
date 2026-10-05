@@ -1,5 +1,7 @@
 import unittest
+from unittest.mock import patch
 
+from embeddings.embedder import Embedder
 from rag.rag_pipeline import OUT_OF_SCOPE_ANSWER, RAGPipeline
 
 
@@ -140,6 +142,12 @@ class RAGPipelineTests(unittest.TestCase):
         self.assertIn("no indexed documents", result["answer"].lower())
         self.assertEqual(result["sources"], [])
         self.assertEqual(llm.prompts, [])
+
+    def test_embedder_does_not_load_sentence_model_until_first_embedding(self):
+        with patch("embeddings.embedder._load_model") as load_model:
+            embedder = Embedder()
+            self.assertIsNone(embedder.model)
+            load_model.assert_not_called()
 
     def test_source_metadata_contains_similarity_and_excerpt(self):
         pipeline, _ = self.make_pipeline([

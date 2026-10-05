@@ -28,7 +28,7 @@ class RAGPipeline:
 
     def __init__(self, embedder=None, llm=None, vector_store=None):
         self.logger = get_logger(__name__)
-        self.embedder = embedder or Embedder()
+        self.embedder = embedder
         self.llm = llm or HuggingFaceService()
         self.vector_store = vector_store
 
@@ -68,6 +68,11 @@ class RAGPipeline:
 
     def indexed_documents(self):
         return [{"name": source} for source in self._sources()]
+
+    def _get_embedder(self):
+        if self.embedder is None:
+            self.embedder = Embedder()
+        return self.embedder
 
     @staticmethod
     def _numbers_in_name(value):
@@ -449,7 +454,7 @@ ANSWER:"""
             question,
             recent_questions,
         )
-        query_vector = self.embedder.embed(question)
+        query_vector = self._get_embedder().embed(question)
         results = self._retrieve(question, query_vector, selected_sources)
         if selected_sources:
             self.logger.info("Selected documents: %s", selected_sources)

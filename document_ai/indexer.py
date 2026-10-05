@@ -11,9 +11,8 @@ VECTOR_FOLDER = "vector_data"
 
 class DocumentIndexer:
 
-    def __init__(self):
-
-        self.embedder = Embedder()
+    def __init__(self, embedder=None):
+        self.embedder = embedder
 
     def prepare_document(
         self,
@@ -40,8 +39,10 @@ class DocumentIndexer:
                 "No chunks were created."
             )
 
-        vectors = []
+        if self.embedder is None:
+            self.embedder = Embedder()
 
+        vectors = []
         for chunk in chunks:
 
             vector = self.embedder.embed(
