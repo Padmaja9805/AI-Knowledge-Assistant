@@ -53,16 +53,14 @@ each terminal before running them:
 
 ## Deployment configuration
 
-Deploy the FastAPI backend and Streamlit frontend as separate web services.
-Set `HF_TOKEN` on the backend and set `API_URL` on the frontend to the
-backend's public base URL (for example, `https://your-api.example.com`, without
-an `/ask` suffix). Keep the deployed service start commands separate:
+This repository includes a Render Blueprint in [render.yaml](./render.yaml).
+Create a new Blueprint from the GitHub repository and Render will provision
+the FastAPI backend and Streamlit frontend as separate free web services.
+During initial setup, provide `HF_TOKEN` securely in Render's prompt; do not
+put the token in the Blueprint or commit it to the repository. The frontend
+gets the backend hostname from the Blueprint.
 
-```text
-uvicorn backend.main:app --host 0.0.0.0 --port $PORT
-streamlit run frontend/app.py --server.address 0.0.0.0 --server.port $PORT
-```
-
-Configure persistent storage for `uploads/` and `vector_data/` on the backend
-host. Without persistent storage, files and the index can be lost when the
-service restarts or is redeployed.
+The free backend has ephemeral storage, so uploaded documents and the FAISS
+index can be lost when the service restarts or is redeployed. Free services
+also spin down when idle, which can make the first request slow. Re-upload and
+index documents after storage is cleared.

@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: ai-knowledge-assistant-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: HF_TOKEN
+        sync: false
+      - key: AI_MODEL
+        value: openai/gpt-oss-120b
+      - key: RAG_TOP_K
+        value: "8"
+      - key: RAG_MIN_SCORE
+        value: "0.35"
+
+  - type: web
+    name: ai-knowledge-assistant-ui
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run frontend/app.py --server.address 0.0.0.0 --server.port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: API_URL
+        fromService:
+          type: web
+          name: ai-knowledge-assistant-api
+          property: host
