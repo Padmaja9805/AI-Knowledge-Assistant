@@ -28,7 +28,4 @@ services:
       - key: PYTHON_VERSION
         value: 3.11.11
       - key: API_URL
-        fromService:
-          type: web
-          name: ai-knowledge-assistant-api
-          property: host
+        value: https://ai-knowledge-assistant-api-npde.onrender.com
