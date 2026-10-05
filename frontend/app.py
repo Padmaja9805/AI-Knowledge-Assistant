@@ -10,10 +10,16 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-API_URL = os.getenv(
-    "API_URL",
-    "http://127.0.0.1:8000"
-).rstrip("/")
+try:
+    configured_api_url = st.secrets.get("API_URL")
+except FileNotFoundError:
+    configured_api_url = None
+
+API_URL = (
+    configured_api_url
+    or os.getenv("API_URL")
+    or "http://127.0.0.1:8000"
+).strip().rstrip("/")
 if not API_URL.startswith(("http://", "https://")):
     API_URL = f"https://{API_URL}"
 

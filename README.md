@@ -60,7 +60,29 @@ During initial setup, provide `HF_TOKEN` securely in Render's prompt; do not
 put the token in the Blueprint or commit it to the repository. The frontend
 gets the backend hostname from the Blueprint.
 
-The free backend has ephemeral storage, so uploaded documents and the FAISS
-index can be lost when the service restarts or is redeployed. Free services
-also spin down when idle, which can make the first request slow. Re-upload and
-index documents after storage is cleared.
+### Host the UI on Streamlit Community Cloud
+
+The Streamlit UI can instead be hosted on Streamlit Community Cloud while the
+FastAPI backend remains on Render:
+
+1. Deploy the FastAPI service from the Render Blueprint and wait for its
+   `/health` endpoint to respond successfully.
+2. In Streamlit Community Cloud, create an app from this repository's `main`
+   branch and set the app file to `frontend/app.py`.
+3. In the app's **Settings → Secrets**, set the backend URL:
+
+   ```toml
+   API_URL = "https://ai-knowledge-assistant-api-npde.onrender.com"
+   ```
+
+   `API_URL` is not a credential, but Streamlit Secrets provides a convenient
+   way to configure it. The app also accepts `API_URL` from the environment;
+   local development continues to use `.env`.
+4. Streamlit Cloud installs the UI-only dependencies from
+   [frontend/requirements.txt](./frontend/requirements.txt). The backend's
+   dependencies remain in the root `requirements.txt` for Render.
+
+The Streamlit UI depends on the Render API being reachable. Free Render
+services can spin down when idle, so the first request may take time. Uploaded
+documents and the FAISS index are stored by the backend and can be lost when
+its ephemeral storage is cleared; re-upload and index documents afterward.
