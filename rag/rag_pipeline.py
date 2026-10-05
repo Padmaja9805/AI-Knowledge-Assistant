@@ -5,7 +5,10 @@ from ai.huggingface_service import HuggingFaceService
 from config.settings import settings
 from embeddings.embedder import Embedder
 from utils.logger import get_logger
-from vector_store.faiss_store import FAISSVectorStore
+from vector_store.faiss_store import (
+    FAISSVectorStore,
+    IncompatibleEmbeddingError,
+)
 
 
 VECTOR_FOLDER = Path("vector_data")
@@ -51,6 +54,13 @@ class RAGPipeline:
 
         try:
             self.vector_store = FAISSVectorStore.load(str(VECTOR_FOLDER))
+        except IncompatibleEmbeddingError as error:
+            self.logger.warning(
+                "%s The API is running without the old index; re-index the "
+                "uploaded documents before retrieval.",
+                error,
+            )
+            self.vector_store = None
         except Exception as error:
             self.logger.exception("Could not load the FAISS knowledge base.")
             raise RuntimeError(

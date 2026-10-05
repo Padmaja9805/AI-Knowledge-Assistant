@@ -4,7 +4,6 @@ streamlit
 requests
 python-dotenv
 python-multipart
-sentence-transformers
 faiss-cpu
 numpy
 pypdf

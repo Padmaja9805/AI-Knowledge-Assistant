@@ -11,13 +11,19 @@ python -m pip install -r requirements.txt
 ```
 
 Documents are split into overlapping, paragraph-aware 1,000-character chunks
-(200 characters of overlap), embedded, and stored in FAISS. Answers are
-generated through the Hugging Face Hub Inference API using only retrieved
-document passages; each answer includes its source passages.
+(200 characters of overlap), embedded with the Hugging Face Inference Providers
+`BAAI/bge-small-en-v1.5` embedding API, and stored in FAISS. This avoids loading
+a local ML model or PyTorch in the backend. The same hosted model embeds document
+chunks and questions. Answers are generated through the Hugging Face Hub
+Inference API using only retrieved document passages; each answer includes its
+source passages. The retrieval score cutoff defaults to `0.45` for this
+embedding model; `RAG_MIN_SCORE` can override it for a different corpus.
 
-After upgrading an existing installation, open **Documents** and choose
-**Reindex** so previously uploaded files are rebuilt using the new chunk
-settings.
+After switching from SentenceTransformer embeddings, the existing FAISS index
+is not used: its `chunks.json` has no embedding identity, so the backend starts
+without loading that index until all uploaded documents are re-indexed. The
+re-index operation rebuilds `vector_data/index.faiss` and
+`vector_data/chunks.json` with the new embedding API.
 
 Configure the Hugging Face Hub token used by the LLM:
 
@@ -25,14 +31,17 @@ Configure the Hugging Face Hub token used by the LLM:
 Copy-Item .env.example .env
 ```
 
-Edit `.env` and set `HF_TOKEN` to your Hugging Face access token. The default
-model is `openai/gpt-oss-120b`; set `AI_MODEL` to another chat-completion model
-available to your Hugging Face account if needed. Do not commit `.env`.
+Edit `.env` and set `HF_TOKEN` to a Hugging Face access token permitted to use
+the Inference Providers for both `BAAI/bge-small-en-v1.5` embeddings and the
+configured chat model. No separate embedding token is required. Provider access
+or usage may be subject to your Hugging Face account's available credits.
+The default chat model is `openai/gpt-oss-120b`; set `AI_MODEL` to another
+chat-completion model available to your account if needed. Do not commit `.env`.
 
 In the first terminal, start the API:
 
 ```powershell
-uvicorn backend.main:app --reload
+uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 In the second terminal, start Streamlit:
@@ -43,6 +52,53 @@ streamlit run frontend/app.py
 
 Open <http://localhost:8501>. The API health endpoint is
 <http://127.0.0.1:8000/health>.
+
+### Rebuild and verify the knowledge base locally
+
+In PowerShell, once the API is running, rebuild the full index from the
+documents already in `uploads` (the endpoint rebuilds every supported file):
+
+```powershell
+curl.exe -X POST "http://127.0.0.1:8000/documents/TASK%203%20REPORT.pdf/reindex"
+```
+
+To upload an additional local document (replace the path with a supported
+PDF, DOCX, or TXT file):
+
+```powershell
+curl.exe -F "file=@.\path\to\document.pdf" http://127.0.0.1:8000/upload
+```
+
+Re-index the uploaded file (which rebuilds the complete index), then inspect
+retrieval and returned source names:
+
+```powershell
+curl.exe http://127.0.0.1:8000/health
+curl.exe -X POST "http://127.0.0.1:8000/documents/document.pdf/reindex"
+curl.exe http://127.0.0.1:8000/documents
+
+$body = @{ question = "What happened in Task 3?" } | ConvertTo-Json -Compress
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/ask" -ContentType "application/json" -Body $body
+
+$body = @{ question = "What happened in Task 4?" } | ConvertTo-Json -Compress
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/ask" -ContentType "application/json" -Body $body
+
+$body = @{
+    question = "Compare both documents"
+    recent_questions = @("Tell me about Task 3 report", "Tell me about Task 4 report")
+} | ConvertTo-Json -Compress
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/ask" -ContentType "application/json" -Body $body
+
+$body = @{ question = "What documents are uploaded?" } | ConvertTo-Json -Compress
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/ask" -ContentType "application/json" -Body $body
+
+$body = @{ question = "What is the capital of Atlantis?" } | ConvertTo-Json -Compress
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/ask" -ContentType "application/json" -Body $body
+```
+
+For the Task 3, Task 4, multi-document, inventory, and out-of-scope requests,
+the answer and `sources` should reflect the indexed documents; inventory and
+out-of-scope responses do not require an LLM answer call.
 
 If the commands are not found, activate the project virtual environment in
 each terminal before running them:
@@ -59,6 +115,11 @@ the FastAPI backend and Streamlit frontend as separate free web services.
 During initial setup, provide `HF_TOKEN` securely in Render's prompt; do not
 put the token in the Blueprint or commit it to the repository. The frontend
 gets the backend hostname from the Blueprint.
+`HF_TOKEN` is used for both embeddings and answer generation; no other
+embedding-specific environment variable is required. The backend's startup
+does not download a model. After documents are uploaded, call the re-index
+endpoint for one uploaded filename to rebuild the full FAISS index before
+asking document-content questions.
 
 ### Host the UI on Streamlit Community Cloud
 

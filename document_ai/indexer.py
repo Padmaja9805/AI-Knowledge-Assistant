@@ -42,14 +42,10 @@ class DocumentIndexer:
         if self.embedder is None:
             self.embedder = Embedder()
 
-        vectors = []
-        for chunk in chunks:
-
-            vector = self.embedder.embed(
-                chunk["text"]
-            )
-
-            vectors.append(vector)
+        vectors = self.embedder.embed_many([
+            chunk["text"]
+            for chunk in chunks
+        ])
 
         return vectors, chunks
 
@@ -58,12 +54,6 @@ class DocumentIndexer:
         file_path,
         source
     ):
-
-        vectors, chunks = self.prepare_document(
-            file_path,
-            source
-        )
-
         index_file = Path(
             VECTOR_FOLDER
         ) / "index.faiss"
@@ -87,11 +77,13 @@ class DocumentIndexer:
             store = FAISSVectorStore.load(
                 VECTOR_FOLDER
             )
-
         else:
-
             store = FAISSVectorStore.create()
 
+        vectors, chunks = self.prepare_document(
+            file_path,
+            source
+        )
 
         # ------------------------------------------
         # ADD DOCUMENT

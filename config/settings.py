@@ -41,7 +41,7 @@ class Settings:
     RAG_MIN_SCORE = float(
         os.getenv(
             "RAG_MIN_SCORE",
-            "0.35"
+            "0.45"
         )
     )
 

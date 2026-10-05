@@ -16,7 +16,7 @@ services:
       - key: RAG_TOP_K
         value: "8"
       - key: RAG_MIN_SCORE
-        value: "0.35"
+        value: "0.45"
 
   - type: web
     name: ai-knowledge-assistant-ui

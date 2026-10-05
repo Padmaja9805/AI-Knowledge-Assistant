@@ -1,6 +1,8 @@
 import unittest
 from unittest.mock import patch
 
+import numpy as np
+
 from embeddings.embedder import Embedder
 from rag.rag_pipeline import OUT_OF_SCOPE_ANSWER, RAGPipeline
 
@@ -136,6 +138,16 @@ class RAGPipelineTests(unittest.TestCase):
         self.assertEqual(result, {"answer": OUT_OF_SCOPE_ANSWER, "sources": []})
         self.assertEqual(llm.prompts, [])
 
+    def test_unrelated_embedding_scores_below_threshold_stay_out_of_scope(self):
+        pipeline, llm = self.make_pipeline([
+            {**chunk("TASK 3 REPORT.pdf"), "score": 0.41},
+        ])
+        with patch("rag.rag_pipeline.settings.RAG_MIN_SCORE", 0.45):
+            result = pipeline.answer("What is the capital of Atlantis?")
+
+        self.assertEqual(result, {"answer": OUT_OF_SCOPE_ANSWER, "sources": []})
+        self.assertEqual(llm.prompts, [])
+
     def test_empty_knowledge_base_is_explicit(self):
         pipeline, llm = self.make_pipeline([])
         result = pipeline.answer("What happened?")
@@ -143,11 +155,47 @@ class RAGPipelineTests(unittest.TestCase):
         self.assertEqual(result["sources"], [])
         self.assertEqual(llm.prompts, [])
 
-    def test_embedder_does_not_load_sentence_model_until_first_embedding(self):
-        with patch("embeddings.embedder._load_model") as load_model:
-            embedder = Embedder()
-            self.assertIsNone(embedder.model)
-            load_model.assert_not_called()
+    def test_embedder_returns_normalized_float32_vectors(self):
+        class FakeEmbeddingClient:
+            def feature_extraction(self, texts, model, normalize):
+                if isinstance(texts, str):
+                    texts = [texts]
+                return np.tile([3.0, 4.0] + [0.0] * 382, (len(texts), 1))
+
+        embedder = Embedder(client=FakeEmbeddingClient())
+        vector = embedder.embed("A document passage.")
+
+        self.assertEqual(vector.shape, (384,))
+        self.assertEqual(vector.dtype, np.float32)
+        self.assertAlmostEqual(float(np.linalg.norm(vector)), 1.0)
+
+    def test_embedder_batches_inputs_and_uses_same_model(self):
+        class FakeEmbeddingClient:
+            def __init__(self):
+                self.calls = []
+
+            def feature_extraction(self, texts, model, normalize):
+                self.calls.append((len(texts), model, normalize))
+                return np.tile([1.0] + [0.0] * 383, (len(texts), 1))
+
+        client = FakeEmbeddingClient()
+        embedder = Embedder(client=client)
+        vectors = embedder.embed_many(["same input"] * 33)
+
+        self.assertEqual(vectors.shape, (33, 384))
+        self.assertEqual(vectors.dtype, np.float32)
+        self.assertEqual(
+            client.calls,
+            [
+                (32, "BAAI/bge-small-en-v1.5", True),
+                (1, "BAAI/bge-small-en-v1.5", True),
+            ],
+        )
+
+    def test_embedder_reports_missing_hugging_face_token(self):
+        with patch("embeddings.embedder.settings.HF_TOKEN", None):
+            with self.assertRaisesRegex(RuntimeError, "HF_TOKEN"):
+                Embedder().embed("A document passage.")
 
     def test_source_metadata_contains_similarity_and_excerpt(self):
         pipeline, _ = self.make_pipeline([

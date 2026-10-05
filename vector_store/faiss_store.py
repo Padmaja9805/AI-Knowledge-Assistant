@@ -4,12 +4,22 @@ from pathlib import Path
 
 import numpy as np
 
+from embeddings.embedder import (
+    EMBEDDING_DIMENSION,
+    EMBEDDING_ID,
+)
+
+
+class IncompatibleEmbeddingError(ValueError):
+    pass
+
 
 class FAISSVectorStore:
 
-    def __init__(self, dimension=None):
+    def __init__(self, dimension=None, embedding_id=EMBEDDING_ID):
 
         self.dimension = dimension
+        self.embedding_id = embedding_id
         self.index = None
         self.chunks = []
 
@@ -34,7 +44,7 @@ class FAISSVectorStore:
         return vector / norm
 
     @classmethod
-    def create(cls, dimension=384):
+    def create(cls, dimension=EMBEDDING_DIMENSION):
 
         return cls(
             dimension=dimension
@@ -57,12 +67,20 @@ class FAISSVectorStore:
         if not len(vectors):
             return
 
+        if vectors.ndim != 2 or vectors.shape[1] == 0:
+            raise ValueError("Vectors must be a two-dimensional array.")
+
         if self.index is None:
 
             self.dimension = vectors.shape[1]
 
             self.index = faiss.IndexFlatIP(
                 self.dimension
+            )
+
+        if vectors.shape[1] != self.dimension:
+            raise ValueError(
+                "Embedding dimensions do not match the FAISS index."
             )
 
         normalized = np.vstack([
@@ -138,6 +156,9 @@ class FAISSVectorStore:
             exist_ok=True
         )
 
+        if self.index is None:
+            raise ValueError("Cannot save an empty FAISS index.")
+
         faiss.write_index(
             self.index,
             str(
@@ -152,7 +173,11 @@ class FAISSVectorStore:
         ) as file:
 
             json.dump(
-                self.chunks,
+                {
+                    "embedding_id": self.embedding_id,
+                    "dimension": self.dimension,
+                    "chunks": self.chunks,
+                },
                 file,
                 ensure_ascii=False,
                 indent=2
@@ -178,7 +203,28 @@ class FAISSVectorStore:
             encoding="utf-8"
         ) as file:
 
-            chunks = json.load(file)
+            metadata = json.load(file)
+
+        if not isinstance(metadata, dict):
+            raise IncompatibleEmbeddingError(
+                "This FAISS index has no embedding metadata and may use the "
+                "old SentenceTransformer vectors. Re-index all uploaded "
+                "documents before using the knowledge base."
+            )
+
+        if metadata.get("embedding_id") != EMBEDDING_ID:
+            raise IncompatibleEmbeddingError(
+                "The saved FAISS index uses a different embedding method. "
+                "Re-index all uploaded documents before using the knowledge base."
+            )
+
+        chunks = metadata.get("chunks")
+        if not isinstance(chunks, list):
+            raise ValueError("The FAISS chunk metadata is invalid.")
+        if metadata.get("dimension") != index.d:
+            raise ValueError(
+                "The FAISS index dimension does not match its metadata."
+            )
 
         if index.ntotal != len(chunks):
             raise ValueError(
@@ -186,12 +232,12 @@ class FAISSVectorStore:
                 "Please rebuild the knowledge base."
             )
 
-        store = cls()
+        store = cls(
+            dimension=index.d,
+            embedding_id=metadata["embedding_id"],
+        )
 
         store.index = index
-
-        store.dimension = index.d
-
         store.chunks = chunks
 
         return store

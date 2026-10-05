@@ -9,6 +9,10 @@ from document_ai.indexer import DocumentIndexer
 from document_ai.manager import DocumentManager
 from rag.rag_pipeline import RAGPipeline
 from utils.logger import get_logger
+from vector_store.faiss_store import (
+    FAISSVectorStore,
+    IncompatibleEmbeddingError,
+)
 
 
 logger = get_logger(__name__)
@@ -95,7 +99,22 @@ def upload_document(file: UploadFile = File(...)):
         with file_path.open("wb") as saved_file:
             shutil.copyfileobj(file.file, saved_file)
 
-        result = document_indexer.index_document(file_path, filename)
+        try:
+            result = document_indexer.index_document(file_path, filename)
+        except IncompatibleEmbeddingError:
+            logger.info(
+                "Existing FAISS index uses a different embedding method; "
+                "rebuilding it from all uploaded documents."
+            )
+            document_manager.rebuild_index()
+            store = FAISSVectorStore.load()
+            result = {
+                "chunks_added": sum(
+                    chunk.get("source") == filename
+                    for chunk in store.chunks
+                ),
+                "source": filename,
+            }
         if not result:
             raise RuntimeError("Document indexing returned no result.")
 
